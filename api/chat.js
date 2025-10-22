@@ -1,51 +1,82 @@
-// Vercel will deploy any JS file under /api as a serverless function.
-// POST https://<your-project>.vercel.app/api/chat
+// /api/chat.js  (Node runtime on Vercel, ES module ok)
+const ALLOW_ALL = true; // flip to false after it works
+const ORIGIN_WHITELIST = [
+  // add your exact survey origins here when ALLOW_ALL=false
+  "https://YOURBRAND.qualtrics.com",
+  "https://YOURVANITYDOMAIN.example.edu" // if you use one
+];
+
+function corsHeaders(origin) {
+  const allowOrigin = ALLOW_ALL ? "*" :
+    (ORIGIN_WHITELIST.indexOf(origin) >= 0 ? origin : "https://YOURBRAND.qualtrics.com");
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Max-Age": "600",
+    "Vary": "Origin"
+  };
+}
 
 export default async function handler(req, res) {
-  // Basic CORS for your Qualtrics brand domain (adjust to yours)
-  const allowOrigin = "https://berkeley.qualtrics.com";
-  res.setHeader("Access-Control-Allow-Origin", allowOrigin);
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  if (req.method === "OPTIONS") return res.status(204).end(); // preflight
+  const origin = req.headers.origin || "";
+  const headers = corsHeaders(origin);
+  Object.entries(headers).forEach(([k, v]) => res.setHeader(k, v));
 
-  if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
+  // 1) Handle preflight cleanly
+  if (req.method === "OPTIONS") {
+    res.status(204).end();
+    return;
+  }
+
+  // Only POST is allowed
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "Method Not Allowed" });
+    return;
+  }
 
   try {
-    const { conversation = [], embeddedData = {}, model = "gpt-4o-mini" } = req.body || {};
+    const body = req.body || {};
+    const conversation = Array.isArray(body.conversation) ? body.conversation : [];
+    const embeddedData = body.embeddedData || {};
+    const model = body.model || "gpt-4o-mini";
 
+    // Build OpenAI payload
     const system = { role: "system", content: "You are an assistant in a research survey. Keep replies <=120 words." };
-    const context = { role: "user", content: `Earlier answers: ${JSON.stringify(embeddedData)}` };
+    const context = { role: "user", content: "Earlier answers: " + JSON.stringify(embeddedData) };
 
+    // Call OpenAI Responses API
     const r = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        model,
-        // Responses API accepts arrays of input items; we pass system/context + prior turns
-        input: [system, context, ...conversation]
-      })
+      body: JSON.stringify({ model, input: [system, context, ...conversation] })
     });
 
+    const raw = await r.text();
     if (!r.ok) {
-      const text = await r.text();
-      return res.status(r.status).json({ error: text });
+      // Bubble details to the browser (keep CORS headers on error too)
+      res.status(r.status).json({ error: "OpenAI " + r.status, body: raw.slice(0, 500) });
+      return;
     }
-    const data = await r.json();
 
-    // Pull assistant text from Responses API output
-    const assistantText =
-      data.output?.[0]?.content?.[0]?.text ??
-      data.output_text ?? "";
+    let data = {};
+    try { data = JSON.parse(raw); } catch (_) {}
 
-    return res.status(200).json({
-      reply: assistantText,
-      conversation: [...conversation, { role: "assistant", content: assistantText }]
-    });
+    // Extract assistant text for both known shapes
+    let assistantText = "";
+    if (data && data.output && data.output[0] && data.output[0].content && data.output[0].content[0]) {
+      assistantText = data.output[0].content[0].text || "";
+    }
+    if (!assistantText && typeof data.output_text === "string") assistantText = data.output_text;
+
+    const updated = conversation.concat({ role: "assistant", content: assistantText || "(empty)" });
+
+    res.status(200).json({ reply: assistantText || "(empty)", conversation: updated });
   } catch (err) {
-    return res.status(500).json({ error: String(err) });
+    // Still return CORS headers here
+    res.status(500).json({ error: String(err) });
   }
 }
