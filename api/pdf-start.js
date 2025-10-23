@@ -62,7 +62,7 @@ export default async function handler(req, res) {
         model: "gpt-4o-mini",
         input: [
           { role: "system",
-            content: [ { type: "text", text: "You are a nutrition assistant. Give concise, supportive feedback with actionable suggestions." } ] },
+            content: [ { type: "input_text", text: "You are a nutrition assistant. Give concise, supportive feedback with actionable suggestions." } ] },
           { role: "user",
             content: [
               { type: "input_text", text: "Please review the attached PDF and provide brief feedback, then invite the user to ask questions if they would like nutrition advice." },
