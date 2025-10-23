@@ -38,7 +38,7 @@ export default async function handler(req, res) {
       const role = turn.role === "assistant" ? "assistant" : "user";
       input.push({
         role,
-        content: [{ type: "text", text: String(turn.content || "") }]
+        content: [{ type: "input_text", text: String(turn.content || "") }]
       });
     }
 
