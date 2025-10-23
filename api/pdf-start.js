@@ -41,7 +41,7 @@ export default async function handler(req, res) {
     // Upload file → OpenAI Files
     const form = new FormData();
     form.append("file", new Blob([pdf.buffer], { type: pdf.mime }), pdf.filename);
-    form.append("purpose", "file-extract");
+    form.append("purpose", "assistants");
 
     const up = await fetch("https://api.openai.com/v1/files", {
       method: "POST",
