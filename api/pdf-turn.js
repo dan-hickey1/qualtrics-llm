@@ -22,7 +22,7 @@ export default async function handler(req, res) {
     const input = [{
       role: "system",
       content: [{
-        type: "text",
+        type: "input_text",
         text: [
           "You are a helpful assistant answering questions about the attached PDF.",
           "Rules:",
