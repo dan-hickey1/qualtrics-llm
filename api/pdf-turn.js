@@ -24,7 +24,7 @@ export default async function handler(req, res) {
     // System style
     contentBlocks.push({
       role: "system",
-      content: [ { type: "text", text: "You are a helpful assistant that offers nutrition advice to college students." } ]
+      content: [ { type: "input_text", text: "You are a helpful assistant that offers nutrition advice to college students." } ]
     });
 
     // Fold convo into one 'user' block followed by the file
