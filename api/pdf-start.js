@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   if (req.method !== "POST")    return res.status(405).json({ error: "Method Not Allowed" });
 
   try {
-    const Busboy = (await import("busboy")).default || (await import("busboy")).default;
+    const Busboy = (await import("busboy")).default;
     const bb = Busboy({ headers: req.headers });
 
     const files = [];
@@ -31,7 +31,7 @@ export default async function handler(req, res) {
       });
       bb.on("field", (name, val) => { if (name==="age") age=String(val||""); if (name==="topic") topic=String(val||""); });
       bb.on("error", reject);
-      bb.on("close", resolve);
+      bb.on("finish", resolve);
       req.pipe(bb);
     });
 
