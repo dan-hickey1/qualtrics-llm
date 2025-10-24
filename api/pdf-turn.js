@@ -23,10 +23,10 @@ export default async function handler(req, res) {
     var input = [{
       role: "system",
       content: [{
-        type: "input_text",
+        type: "output_text",
         text:
           "You are a helpful assistant answering questions about the attached PDF.\n" +
-          "Rules: Be concise (≤80 words). Do NOT repeat earlier advice—build on it or ask a clarifying question.\n" +
+          "Rules: Do NOT repeat earlier advice—build on it or ask a clarifying question.\n" +
           "Mention page numbers if they are clear from the text."
       }]
     }];
