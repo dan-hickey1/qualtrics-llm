@@ -63,7 +63,6 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        text: { format: "text" },     // ask for plain text output
         // temperature: 0.4, frequency_penalty: 0.2,  // optional anti-repeat nudge
         input
       })
