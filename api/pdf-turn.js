@@ -57,7 +57,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: "gpt-4o-mini",
         tools: [{ type: "file_search" }],       // enable tool globally
-        response_format: { type: "text" },      // so data.output_text is present
+        text: { type: "text" },      // so data.output_text is present
         // temperature: 0.4, frequency_penalty: 0.2, // optional anti-repeat nudge
         input: input
       })
