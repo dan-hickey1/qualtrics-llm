@@ -23,7 +23,7 @@ export default async function handler(req, res) {
     var input = [{
       role: "system",
       content: [{
-        type: "output_text",
+        type: "input_text",
         text:
           "You are a helpful assistant answering questions about the attached PDF.\n" +
           "Rules: Do NOT repeat earlier advice—build on it or ask a clarifying question.\n" +
@@ -35,7 +35,7 @@ export default async function handler(req, res) {
     (conversation || []).forEach(function (turn) {
       input.push({
         role: (turn && turn.role === "assistant") ? "assistant" : "user",
-        content: [{ type: "input_text", text: String((turn && turn.content) || "") }]
+        content: [{ type: "output_text", text: String((turn && turn.content) || "") }]
       });
     });
     
