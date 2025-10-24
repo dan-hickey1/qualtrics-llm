@@ -19,65 +19,62 @@ export default async function handler(req, res) {
     if (!file_id) return res.status(400).json({ error: "Missing file_id" });
 
     // 1) System rules to reduce repetition and keep answers tight
-    const input = [{
+    // Build the Responses API input with the FULL history
+    var input = [{
       role: "system",
       content: [{
         type: "input_text",
-        text: [
-          "You are a helpful assistant answering questions about the attached PDF.",
-          "Rules:",
-          "• Do NOT repeat advice already given; instead build on it or ask a clarifying follow-up.",
-          "• If you refer to specific text, mention page numbers when clear."
-        ].join("\n")
+        text:
+          "You are a helpful assistant answering questions about the attached PDF.\n" +
+          "Rules: Be concise (≤80 words). Do NOT repeat earlier advice—build on it or ask a clarifying question.\n" +
+          "Mention page numbers if they are clear from the text."
       }]
     }];
-
-    // 2) Push the full back-and-forth as text blocks
-    //    (We’ll add the file to the *latest* user block below.)
-    for (const turn of conversation) {
-      const role = turn.role === "assistant" ? "assistant" : "user";
+    
+    // Push every prior turn (user/assistant) as input_text blocks
+    (conversation || []).forEach(function (turn) {
       input.push({
-        role,
-        content: [{ type: "text", text: String(turn.content || "") }]
+        role: (turn && turn.role === "assistant") ? "assistant" : "user",
+        content: [{ type: "input_text", text: String((turn && turn.content) || "") }]
       });
-    }
-
-    // 3) Attach the file to the last user message so the model can ground answers
-    for (let i = input.length - 1; i >= 0; i--) {
+    });
+    
+    // Attach the PDF to the *latest user* message so file_search can ground the reply
+    for (var i = input.length - 1; i >= 0; i--) {
       if (input[i].role === "user") {
-        input[i].content.push({ type: "input_file", file_id });
+        input[i].attachments = [{ file_id: file_id, tools: [{ type: "file_search" }] }];
         break;
       }
     }
-
-    // 4) Call OpenAI Responses
-    const r = await fetch("https://api.openai.com/v1/responses", {
+    
+    // Call Responses
+    var r = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Authorization": "Bearer " + process.env.OPENAI_API_KEY,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        // You can also set temperature or penalties if you want slightly more variety:
-        // temperature: 0.4,
-        // frequency_penalty: 0.2,
-        input
+        tools: [{ type: "file_search" }],       // enable tool globally
+        response_format: { type: "text" },      // so data.output_text is present
+        // temperature: 0.4, frequency_penalty: 0.2, // optional anti-repeat nudge
+        input: input
       })
     });
-
-    const raw = await r.text();
+    
+    var raw = await r.text();
     if (!r.ok) return res.status(r.status).json({ error: "OpenAI error", body: raw.slice(0, 500) });
-
-    let data = {};
-    try { data = JSON.parse(raw); } catch {}
-    let reply = "";
-    if (typeof data.output_text === "string") reply = data.output_text;
+    
+    var data = {};
+    try { data = JSON.parse(raw); } catch (e) {}
+    
+    var reply = (typeof data.output_text === "string") ? data.output_text : "";
     if (!reply && data.output && data.output[0] && data.output[0].content && data.output[0].content[0]) {
       reply = data.output[0].content[0].text || "";
     }
-
-    const updated = conversation.concat({ role: "assistant", content: reply || "(no reply)" });
+    
+    var updated = conversation.concat({ role: "assistant", content: reply || "(no reply)" });
     return res.status(200).json({ reply: reply || "(no reply)", conversation: updated });
   } catch (e) {
     return res.status(500).json({ error: String(e) });
