@@ -1,10 +1,15 @@
 // /api/pdf-turn.js
-function setCORS(res, origin) {
-  res.setHeader("Access-Control-Allow-Origin", "https://berkeley.yul1.qualtrics.com");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.setHeader("Access-Control-Max-Age", "600");
+function setCORS(req, res) {
+  const ORIGIN = "https://berkeley.yul1.qualtrics.com"; // your exact Qualtrics origin
+  const reqOrigin = req.headers.origin || ORIGIN;
+  res.setHeader("Access-Control-Allow-Origin", reqOrigin);
   res.setHeader("Vary", "Origin");
+
+  // echo the browser’s requested headers to avoid preflight mismatches
+  const reqHeaders = req.headers["access-control-request-headers"];
+  res.setHeader("Access-Control-Allow-Headers", reqHeaders || "Content-Type, Authorization, X-Requested-With");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Max-Age", "600");
 }
 
 function extractReply(data) {
