@@ -38,31 +38,25 @@ function extractReply(data) {
 
 
 export default async function handler(req, res) {
-  // 1️⃣  Always set CORS first
   setCORS(req, res);
   if (req.method === "OPTIONS") return res.status(204).end();
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== "POST")    return res.status(405).json({ error: "Method Not Allowed" });
 
   try {
-    // 2️⃣  Parse body & build your OpenAI payload
-    const body = req.body ? (typeof req.body === "string" ? JSON.parse(req.body) : req.body) : {};
-    const { file_id, conversation } = body;
+    const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
+    const file_id = body.file_id || "";
+    const conversation = Array.isArray(body.conversation) ? body.conversation : [];
+    if (!file_id) return res.status(400).json({ error: "Missing file_id" });
 
+    // Build a minimal, stable Responses payload
     const input = [
-      {
-        role: "system",
-        content: [{ type: "input_text", text: "You are a helpful assistant summarizing PDFs." }]
-      },
-      {
-        role: "user",
-        content: [
+      { role: "system", content: [{ type: "input_text", text: "Answer concisely (≤80 words). Avoid repeating prior advice." }] },
+      { role: "user",   content: [
           { type: "input_file", file_id },
-          { type: "input_text", text: "Conversation so far:\n" + JSON.stringify(conversation) }
-        ]
-      }
+          { type: "input_text", text: "Transcript:\n" + conversation.map(t => ((t.role==="assistant"?"Assistant: ":"User: ")+String(t.content||""))).join("\n") }
+      ] }
     ];
 
-    // 3️⃣  ✅ This is the “step 4” block — the OpenAI call wrapped in a safe try/catch
     let raw = "";
     try {
       const r = await fetch("https://api.openai.com/v1/responses", {
@@ -74,27 +68,31 @@ export default async function handler(req, res) {
         body: JSON.stringify({ model: "gpt-4o-mini", input })
       });
       raw = await r.text();
-
-      // always send JSON response even on error
       if (!r.ok) {
-        res.status(r.status).json({
-          error: "OpenAI error",
-          body: raw.slice(0, 500)
-        });
-        return; // prevent fall-through
+        res.status(r.status).json({ error: "OpenAI error", body: raw.slice(0, 500) });
+        return;
       }
     } catch (err) {
       res.status(502).json({ error: "Upstream fetch failed", detail: String(err) });
       return;
     }
 
-    // 4️⃣  Parse & send final reply (so Qualtrics always gets a body)
-    let data;
-    try { data = JSON.parse(raw); } catch (_) {}
-    const reply = extractReply(data) || "(no reply)";
-    res.status(200).json({ reply });
-  } catch (err) {
-    // 5️⃣  Safety net: catch anything else
-    res.status(500).json({ error: "Server error", detail: String(err) });
+    let data; try { data = JSON.parse(raw); } catch (_){}
+    // robust extraction
+    let reply = "";
+    if (data && typeof data.output_text === "string" && data.output_text.trim()) reply = data.output_text.trim();
+    if (!reply && Array.isArray(data?.output)) {
+      for (const item of data.output) {
+        for (const c of (item?.content||[])) {
+          if (c?.type === "output_text" && typeof c.text === "string" && c.text.trim()) { reply = c.text.trim(); break; }
+          if (c?.type === "output_text" && typeof c.text?.value === "string" && c.text.value.trim()) { reply = c.text.value.trim(); break; }
+        }
+        if (reply) break;
+      }
+    }
+    res.status(200).json({ reply: reply || "(no reply)", conversation: conversation.concat({ role:"assistant", content: reply || "(no reply)" }) });
+  } catch (e) {
+    res.status(500).json({ error: "Server error", detail: String(e) });
   }
 }
+
