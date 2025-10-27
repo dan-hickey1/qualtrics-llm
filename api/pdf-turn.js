@@ -38,109 +38,63 @@ function extractReply(data) {
 
 
 export default async function handler(req, res) {
-  setCORS(res, req.headers.origin);
+  // 1️⃣  Always set CORS first
+  setCORS(req, res);
   if (req.method === "OPTIONS") return res.status(204).end();
-  if (req.method !== "POST")    return res.status(405).json({ error: "Method Not Allowed" });
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    const body = req.body || {};
-    const file_id = body.file_id || "";
-    const conversation = Array.isArray(body.conversation) ? body.conversation : [];
-    if (!file_id) return res.status(400).json({ error: "Missing file_id" });
+    // 2️⃣  Parse body & build your OpenAI payload
+    const body = req.body ? (typeof req.body === "string" ? JSON.parse(req.body) : req.body) : {};
+    const { file_id, conversation } = body;
 
-    // 1) System rules to reduce repetition and keep answers tight
-    // Build the Responses API input with the FULL history
-    function asTranscript(convo) {
-      var lines = [];
-      for (var i = 0; i < convo.length; i++) {
-        var t = convo[i];
-        var role = (t && t.role === "assistant") ? "Assistant" : "User";
-        lines.push(role + ": " + String((t && t.content) || ""));
-      }
-      return lines.join("\n");
-    }
-    
-    // latest user message should be the last item in `conversation`
-    const lastUser = (conversation[conversation.length - 1] && conversation[conversation.length - 1].content) || "";
-    
-    // Build inputs: system → user (pdf + transcript + latest question)
-    // Build a readable transcript from the whole conversation
-    function asTranscript(convo) {
-      var lines = [];
-      for (var i = 0; i < (convo || []).length; i++) {
-        var t = convo[i] || {};
-        var role = (t.role === "assistant") ? "Assistant" : "User";
-        lines.push(role + ": " + String(t.content || ""));
-      }
-      return lines.join("\n");
-    }
-    
-    // Find the most recent *user* message (don’t assume last item — it might be assistant)
-    function lastUserMessage(convo) {
-      for (var i = (convo || []).length - 1; i >= 0; i--) {
-        var t = convo[i] || {};
-        if (t.role !== "assistant") return String(t.content || "");
-      }
-      return "";
-    }
-    
-    // ----- inside your handler after reading body -----
-    var file_id = body.file_id || "";
-    var conversation = Array.isArray(body.conversation) ? body.conversation : [];
-    
-    if (!file_id) return res.status(400).json({ error: "Missing file_id" });
-    
-    var transcript = asTranscript(conversation);
-    var latestUser = lastUserMessage(conversation);
-    
-    // Build Responses input: system + one user message containing the PDF and text prompts
-    var input = [
+    const input = [
       {
         role: "system",
-        content: [{
-          type: "input_text",
-          text:
-            "You are answering questions about the attached PDF. " +
-            "Be concise (≤80 words). Do not repeat prior advice; build on it or ask a clarifying question. " +
-            "Mention page numbers when clear."
-        }]
+        content: [{ type: "input_text", text: "You are a helpful assistant summarizing PDFs." }]
       },
       {
         role: "user",
         content: [
-          { type: "input_file", file_id: file_id },
-          { type: "input_text", text: "Conversation so far:\n" + transcript },
-          { type: "input_text", text: "Latest user question:\n" + latestUser }
+          { type: "input_file", file_id },
+          { type: "input_text", text: "Conversation so far:\n" + JSON.stringify(conversation) }
         ]
       }
     ];
-    
-    var r = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Authorization": "Bearer " + process.env.OPENAI_API_KEY,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        input: input
-        // (INTENTIONALLY omit text/response_format to avoid schema mismatches)
-        // Optional anti-repeat:
-        // temperature: 0.4,
-        // frequency_penalty: 0.2
-      })
-    });
-    
-    var raw = await r.text();
-    if (!r.ok) return res.status(r.status).json({ error: "OpenAI error", body: raw.slice(0, 500) });
-    
-    var data = {};
-    try { data = JSON.parse(raw); } catch (_){}
-    var reply = extractReply(data);
-    
-    var updated = conversation.concat({ role: "assistant", content: reply || "(no reply)" });
-    return res.status(200).json({ reply: reply || "(no reply)", conversation: updated });
-  } catch (e) {
-    return res.status(500).json({ error: String(e) });
+
+    // 3️⃣  ✅ This is the “step 4” block — the OpenAI call wrapped in a safe try/catch
+    let raw = "";
+    try {
+      const r = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ model: "gpt-4o-mini", input })
+      });
+      raw = await r.text();
+
+      // always send JSON response even on error
+      if (!r.ok) {
+        res.status(r.status).json({
+          error: "OpenAI error",
+          body: raw.slice(0, 500)
+        });
+        return; // prevent fall-through
+      }
+    } catch (err) {
+      res.status(502).json({ error: "Upstream fetch failed", detail: String(err) });
+      return;
+    }
+
+    // 4️⃣  Parse & send final reply (so Qualtrics always gets a body)
+    let data;
+    try { data = JSON.parse(raw); } catch (_) {}
+    const reply = extractReply(data) || "(no reply)";
+    res.status(200).json({ reply });
+  } catch (err) {
+    // 5️⃣  Safety net: catch anything else
+    res.status(500).json({ error: "Server error", detail: String(err) });
   }
 }
