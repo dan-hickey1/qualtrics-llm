@@ -1,15 +1,31 @@
 export const config = { api: { bodyParser: false } };
 
-function setCORS(res, origin) {
-  res.setHeader("Access-Control-Allow-Origin", origin || "https://berkeley.yul1.qualtrics.com");
+function setCORS(req, res) {
+  // list of exact origins you want to allow
+  const allowedOrigins = [
+    "https://berkeley.yul1.qualtrics.com",
+    "https://sfsu.co1.qualtrics.com"
+  ];
+
+  const origin = req.headers.origin;
+
+  // check if request Origin header matches one of the allowed ones
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+
+  // mandatory CORS headers
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    req.headers["access-control-request-headers"] || "Content-Type, Authorization"
+  );
   res.setHeader("Access-Control-Max-Age", "600");
-  res.setHeader("Vary", "Origin");
+  res.setHeader("Vary", "Origin");  // important so CDN caches correctly
 }
 
 export default async function handler(req, res) {
-  setCORS(res, req.headers.origin);
+  setCORS(req, res);
   if (req.method === "OPTIONS") return res.status(204).end();
   if (req.method !== "POST")    return res.status(405).json({ error: "Method Not Allowed" });
 
