@@ -42,7 +42,7 @@ export default async function handler(req, res) {
     const model = body.model || "gpt-4o-mini";
 
     // Build OpenAI payload
-    const system = { role: "system", content: "You are an assistant in a research survey. Keep replies <=120 words." };
+    const system = { role: "system", content: "You are an assistant in a research survey." };
     const context = { role: "user", content: "Earlier answers: " + JSON.stringify(embeddedData) };
 
     // Call OpenAI Responses API
