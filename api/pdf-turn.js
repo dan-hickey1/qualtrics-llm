@@ -1,15 +1,26 @@
 // /api/pdf-turn.js
 function setCORS(req, res) {
-  const ORIGIN = "https://berkeley.yul1.qualtrics.com"; // your exact Qualtrics origin
-  const reqOrigin = req.headers.origin || ORIGIN;
-  res.setHeader("Access-Control-Allow-Origin", reqOrigin);
-  res.setHeader("Vary", "Origin");
+  // list of exact origins you want to allow
+  const allowedOrigins = [
+    "https://berkeley.yul1.qualtrics.com",
+    "https://sfsu.co1.qualtrics.com"
+  ];
 
-  // echo the browser’s requested headers to avoid preflight mismatches
-  const reqHeaders = req.headers["access-control-request-headers"];
-  res.setHeader("Access-Control-Allow-Headers", reqHeaders || "Content-Type, Authorization, X-Requested-With");
+  const origin = req.headers.origin;
+
+  // check if request Origin header matches one of the allowed ones
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+
+  // mandatory CORS headers
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    req.headers["access-control-request-headers"] || "Content-Type, Authorization"
+  );
   res.setHeader("Access-Control-Max-Age", "600");
+  res.setHeader("Vary", "Origin");  // important so CDN caches correctly
 }
 
 function extractReply(data) {
